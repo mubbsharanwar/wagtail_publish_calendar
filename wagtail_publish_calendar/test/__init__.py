@@ -1,0 +1,1 @@
+default_app_config = "wagtail_publish_calendar.test.apps.WagtailPublishCalendarTestAppConfig"
