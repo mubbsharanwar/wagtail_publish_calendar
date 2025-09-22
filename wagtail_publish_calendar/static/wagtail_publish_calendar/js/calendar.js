@@ -1,152 +1,173 @@
-import { fetchEvents, updateEvent } from './services.js';
+import { fetchEvents } from './services.js';
 import { getCookie, localInputToIso } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', function () {
   const calendarEl = document.getElementById('calendar');
   if (!calendarEl) return;
 
+  // --- CONFIGURATION ---
   const eventsUrl = calendarEl.getAttribute('data-events-url');
   const updateUrl = calendarEl.getAttribute('data-update-url');
-
-  const modalEl = document.getElementById('event-modal');
-  const startDateTimeInputEl = document.getElementById('start-datetime');
-  const endDateTimeInputEl = document.getElementById('end-datetime');
-  const startDateBlock = document.getElementById('go_live');
-  const endDateBlock = document.getElementById('expiry');
-  const cancelBtn = document.getElementById('modal-cancel');
-  const saveBtn = document.getElementById('modal-save');
-  let activeEvent = null;
-
-  // Ensure dialog starts hidden in browsers without <dialog> support
-  try {
-    modalEl.removeAttribute('open');
-  } catch (e) {}
-  if (modalEl) modalEl.style.display = 'none';
-
   const csrfToken = getCookie('csrftoken');
 
-  function formatForWagtailInput(date) {
-    if (!(date instanceof Date)) date = new Date(date);
+  // --- MODAL & FORM ELEMENTS ---
+  const modalEl = document.getElementById('event-modal');
+  const scheduleForm = document.getElementById('schedule-form'); // Use the form element
+  const modalTitleEl = document.getElementById('event-modal-title');
+  const pageIdInput = document.getElementById('page-id-input'); // The hidden input for the ID
+  const startDateTimeInputEl = document.getElementById('start-datetime');
+  const endDateTimeInputEl = document.getElementById('end-datetime');
+  const unscheduleStartBtn = document.getElementById('unschedule-start');
+  const unscheduleEndBtn = document.getElementById('unschedule-end');
 
-    // convert to local timezone string in format YYYY-MM-DD HH:mm
-    const iso = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16)
-      .replace('T', ' ');
-
-    return iso;
+  // --- UTILITY FUNCTION ---
+  // Converts a Date object to the local time string format Wagtail's widget expects
+  function dateToWagtailInput(date) {
+    if (!date) return '';
+    const d = new Date(date);
+    const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return localDate.toISOString().slice(0, 16).replace('T', ' ');
   }
 
-  // Prefill input using local time formatted for the Wagtail datetime widget (Y-m-d H:i)
-  function openModalForEvent(event) {
-    activeEvent = event;
-    const { id } = event;
-    const eventType = id.split('-')[1];
+  // --- MODAL LOGIC ---
+  function openModal() {
+    modalEl.style.display = 'block';
+    if (modalEl && typeof modalEl.showModal === 'function') {
+      modalEl.showModal();
 
-    if (startDateTimeInputEl) startDateTimeInputEl.value = formatForWagtailInput(event.start || new Date());
-    if (endDateTimeInputEl) endDateTimeInputEl.value = formatForWagtailInput(event.end || new Date());
-
-    if (eventType === 'start') {
-      if (startDateBlock) startDateBlock.style.display = 'none';
-    } else if (eventType === 'end') {
-      if (endDateBlock) endDateBlock.style.display = 'none';
     }
-
-    if (modalEl) {
-      modalEl.style.display = 'block';
-      if (typeof modalEl.showModal === 'function') modalEl.showModal();
+    if (modalEl && modalEl.hasAttribute('open')) {
+      modalEl.close(); // Use .close() to also remove it from the top layer
     }
   }
 
   function closeModal() {
-    if (modalEl) {
-      if (typeof modalEl.close === 'function') modalEl.close();
-      modalEl.style.display = 'none';
-      endDateBlock.style.display = '';
-      startDateBlock.style.display = '';
+    if (modalEl && typeof modalEl.close === 'function') {
+      modalEl.close();
     }
-    activeEvent = null;
+    modalEl.style.display = 'none';
   }
 
-  /**
-   * Handle legacy xdsoft picker only.
-   * Flatpickr is configured to append directly into the modal via its own options.
-   */
-  function relocateLegacyXdsoftPicker() {
+  // --- EVENT HANDLERS ---
+
+  // Handle the main form submission for creating and updating
+  scheduleForm?.addEventListener('submit', async (e) => {
+    e.preventDefault(); // Prevent default browser submission
+    const pageId = pageIdInput.value;
+    if (!pageId) return;
+
     try {
-      if (!modalEl) return;
-      const xd = document.querySelector('.xdsoft_datetimepicker');
-      if (xd && xd.parentNode !== modalEl) {
-        modalEl.appendChild(xd);
+      // Convert local datetime strings to ISO format for the backend, or null if empty
+      const goLiveValue = startDateTimeInputEl.value ? localInputToIso(startDateTimeInputEl.value) : null;
+      const expireValue = endDateTimeInputEl.value ? localInputToIso(endDateTimeInputEl.value) : null;
+
+      const response = await fetch(updateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({
+          page_id: pageId,
+          go_live_at: goLiveValue,
+          expire_at: expireValue
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update schedule.');
       }
-    } catch (e) {
-      console.error('Error relocating legacy xdsoft picker:', e);
-    }
-  }
 
-  if (startDateTimeInputEl) {
-    // If this is flatpickr, configure it to append into modal
-    if (startDateTimeInputEl._flatpickr) {
-      startDateTimeInputEl._flatpickr.set('appendTo', modalEl);
-    }
-
-    // Still attach listeners for xdsoft
-    startDateTimeInputEl.addEventListener('focus', relocateLegacyXdsoftPicker);
-    startDateTimeInputEl.addEventListener('click', relocateLegacyXdsoftPicker);
-  }
-
-  cancelBtn && cancelBtn.addEventListener('click', function () {
-    closeModal();
-  });
-
-  saveBtn && saveBtn.addEventListener('click', async function () {
-    if (!activeEvent) return;
-    const localValue = startDateTimeInputEl && startDateTimeInputEl.value;
-    if (!localValue) return;
-
-    let isoString;
-    try {
-      isoString = localInputToIso(localValue);
-    } catch (err) {
-      console.error('Invalid date/time format: ' + err.message);
-      return;
-    }
-
-    try {
-      await updateEvent(updateUrl, csrfToken, activeEvent.id, isoString);
-      // update event on calendar
-      activeEvent.setStart(new Date(isoString));
+      calendar.refetchEvents();
       closeModal();
     } catch (err) {
-      console.error(err);
+      console.error('Save failed:', err);
+      alert('Error saving schedule: ' + err.message);
     }
   });
 
-  // Build the calendar and use fetchEvents from services.js
+  // Wire up the modal's clear and cancel buttons
+  unscheduleStartBtn?.addEventListener('click', () => { startDateTimeInputEl.value = ''; });
+  unscheduleEndBtn?.addEventListener('click', () => { endDateTimeInputEl.value = ''; });
+  modalEl.querySelector('#modal-cancel')?.addEventListener('click', closeModal);
+
+
+  // --- FULLCALENDAR INITIALIZATION ---
   const calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: 'dayGridMonth',
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,listWeek'
+    },
     editable: true,
-    events: function (fetchInfo, successCallback, failureCallback) {
+    selectable: true,
+
+    // Use the fetchEvents service to load data
+    events: (fetchInfo, successCallback, failureCallback) => {
       fetchEvents(eventsUrl)
-        .then((data) => successCallback(data))
-        .catch((err) => {
-          console.error('Failed to load events', err);
+        .then(data => successCallback(data))
+        .catch(err => {
+          console.error('Failed to load events via service:', err);
           failureCallback(err);
         });
     },
+
+    // EDIT an existing schedule by clicking an event
     eventClick: function (info) {
       info.jsEvent.preventDefault();
-      openModalForEvent(info.event);
+      const pageId = parseInt(info.event.id.split('-')[0]);
+      if (isNaN(pageId)) return;
+
+      const allEvents = calendar.getEvents();
+      const goLiveEvent = allEvents.find(e => e.id === `${pageId}-start`);
+      const expireEvent = allEvents.find(e => e.id === `${pageId}-end`);
+      const baseTitle = info.event.title.replace(/\s\(.*\)$/, '');
+
+      // Populate the form with the existing event data
+      modalTitleEl.textContent = `Update schedule for "${baseTitle}"`;
+      pageIdInput.value = pageId;
+      startDateTimeInputEl.value = dateToWagtailInput(goLiveEvent?.start);
+      endDateTimeInputEl.value = dateToWagtailInput(expireEvent?.start);
+
+      openModal();
     },
+
+    // UPDATE a schedule by dragging and dropping
     eventDrop: async function (info) {
+      const pageId = parseInt(info.event.id.split('-')[0]);
+      const droppedType = info.event.id.split('-')[1]; // 'start' or 'end'
+      if (isNaN(pageId)) { info.revert(); return; }
+
+      const allEvents = calendar.getEvents();
+      const goLiveEvent = allEvents.find(e => e.id === `${pageId}-start`);
+      const expireEvent = allEvents.find(e => e.id === `${pageId}-end`);
+
+      // Determine the new and existing dates to preserve the full schedule
+      let goLiveDate = goLiveEvent ? goLiveEvent.start.toISOString() : null;
+      let expireDate = expireEvent ? expireEvent.start.toISOString() : null;
+
+      if (droppedType === 'start') {
+        goLiveDate = info.event.start.toISOString();
+      } else {
+        expireDate = info.event.start.toISOString();
+      }
+
       try {
-        await updateEvent(updateUrl, csrfToken, info.event.id, info.event.start.toISOString());
+        const response = await fetch(updateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: JSON.stringify({ page_id: pageId, go_live_at: goLiveDate, expire_at: expireDate }),
+        });
+        if (!response.ok) throw new Error('Server responded with an error.');
+        calendar.refetchEvents();
       } catch (err) {
-        console.error('Event update failed', err);
+        console.error('Event drop update failed:', err);
+        alert('Failed to update schedule. Reverting change.');
         info.revert();
       }
     },
   });
 
+
   calendar.render();
+
 });

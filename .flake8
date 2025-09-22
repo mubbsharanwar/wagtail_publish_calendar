@@ -1,0 +1,21 @@
+[flake8]
+max-line-length = 120
+
+max-complexity = 15
+
+ignore = E712, W503
+
+exclude =
+    .git,
+    .gitignore,
+    *.pot,
+    *.py[co],
+    __pycache__,
+    __init__.py,
+    tests,
+    venv,
+    .env,
+    env,
+    alembic
+
+max-doc-length = 120

@@ -1,52 +1,82 @@
 import json
-from django.shortcuts import render
+
+from django.db.models import Q
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import render
 from django.utils.dateparse import parse_datetime
 from wagtail.models import Page
 
-from wagtail_publish_calendar.forms import ScheduleForm
+from .forms import ScheduleForm
 
 
 def calendar_view(request):
+    """
+    Renders the main calendar view and form for the modal.
+    """
     form = ScheduleForm()
-    return render(request, "wagtail_publish_calendar/calendar.html", {"form": form})
+    context = {"form": form, "page_title": "Page Scheduler"}
+    return render(request, "wagtail_publish_calendar/calendar.html", context)
+
 
 def get_page_schedual_dates(request):
+    """
+    Creates event data with descriptive titles and color codes.
+    """
+    pages = Page.objects.filter(Q(go_live_at__isnull=False) | Q(expire_at__isnull=False))
     events = []
-    for page in Page.objects.filter(go_live_at__isnull=False):
-        events.append({
-            "id": f"{page.id}-start",
-            "title": f"{page.title} (Go live)",
-            "start": page.go_live_at.isoformat(),
-            "type": "start",
-        })
 
+    for page in pages:
+        if page.go_live_at:
+            events.append(
+                {
+                    "id": f"{page.id}-start",
+                    "title": f"{page.title} (Go-live)",  # <-- COMBINED TITLE
+                    "start": page.go_live_at.isoformat(),
+                    "color": "#008352",
+                    "extendedProps": {"type": "start"},
+                }
+            )
         if page.expire_at:
-            events.append({
-                "id": f"{page.id}-end",
-                "title": f"{page.title} (Expires)",
-                "start": page.expire_at.isoformat(),
-                "type": "end",
-            })
+            events.append(
+                {
+                    "id": f"{page.id}-end",
+                    "title": f"{page.title} (Expire)",  # <-- COMBINED TITLE
+                    "start": page.expire_at.isoformat(),
+                    "color": "#cd4444",
+                    "extendedProps": {"type": "end"},
+                }
+            )
 
     return JsonResponse(events, safe=False)
 
-@csrf_exempt
+
 def update_page_schedual_date(request):
-    data = json.loads(request.body)
-    page = Page.objects.get(id=data.get("id"))
-    iso_str = data.get("new_date")
-    field_type = data.get("type")
+    """
+    Updates both go-live and expiry dates for a given page ID in a single
+    request.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=405)
 
-    parsed_date = parse_datetime(iso_str)
+    try:
+        data = json.loads(request.body)
+        page_id = data.get("page_id")
 
-    if field_type == "start":
-        page.go_live_at = parsed_date
-    elif field_type == "end":
-        page.expire_at = parsed_date
-    else:
-        return JsonResponse({"message": "Invalid type"}, status=400)
+        # A null or empty string from the frontend means the date should be cleared
+        go_live_str = data.get("go_live_at")
+        expire_str = data.get("expire_at")
 
-    page.save()
-    return JsonResponse({"status": "ok"})
+        page = Page.objects.get(id=page_id)
+
+        page.go_live_at = parse_datetime(go_live_str) if go_live_str else None
+        page.expire_at = parse_datetime(expire_str) if expire_str else None
+
+        print(page)
+
+        page.save()
+        return JsonResponse({"status": "ok", "message": f"Schedule for '{page.title}' updated."})
+
+    except Page.DoesNotExist:
+        return JsonResponse({"error": "Page not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)

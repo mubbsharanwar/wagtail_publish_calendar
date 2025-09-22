@@ -21,7 +21,8 @@ export async function updateEvent(updateUrl, csrfToken, eventId, newDateIso) {
       'Content-Type': 'application/json',
       'X-CSRFToken': csrfToken,
     },
-    body: JSON.stringify({ id: pageEventType[0], type: pageEventType[1], new_date: newDateIso }),
+    // body: JSON.stringify({ id: pageEventType[0], type: pageEventType[1], new_date: newDateIso }),
+    body: JSON.stringify({ id: eventId, new_date: newDateIso }),
   });
 
   if (!resp.ok) {
