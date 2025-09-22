@@ -1,27 +1,53 @@
-ci:
-  autofix_prs: false
-
-default_language_version:
-  python: python3
-
+exclude: "docs|migrations|alembic|static|.git|.tox"
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+  # general checks (see here: https://pre-commit.com/hooks.html)
+  - repo: "https://github.com/pre-commit/pre-commit-hooks"
+    rev: v4.6.0
     hooks:
-      - id: check-added-large-files
-      - id: check-case-conflict
-      - id: check-json
-      - id: check-merge-conflict
-      - id: check-symlinks
-      - id: check-toml
       - id: check-yaml
-        args: ['--unsafe']
       - id: end-of-file-fixer
       - id: trailing-whitespace
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    # ruff config is in ruff.toml
-    rev: v0.3.0
+      - id: check-added-large-files
+      - id: check-json
+        exclude: .vscode
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-toml
+      - id: requirements-txt-fixer
+
+  # black - formatting
+  - repo: "https://github.com/psf/black"
+    rev: 25.1.0
     hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
+      - id: black
+        args: ["--config=pyproject.toml"]
+
+  # docformatter
+  - repo: "https://github.com/PyCQA/docformatter"
+    rev: v1.7.7
+    hooks:
+      - id: docformatter
+        additional_dependencies: [tomli]
+        args: ["--in-place", "--config=pyproject.toml"]
+
+  # isort - sorting imports
+  - repo: "https://github.com/pycqa/isort"
+    rev: 6.0.1
+    hooks:
+      - id: isort
+
+  # flake8 - linting
+  - repo: "https://github.com/pycqa/flake8"
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        args: ["--config=.flake8"]
+
+  # djLint - Django template linter
+  - repo: https://github.com/djLint/djLint
+    rev: v1.36.4
+    hooks:
+      - id: djlint-reformat-django
+      - id: djlint-django

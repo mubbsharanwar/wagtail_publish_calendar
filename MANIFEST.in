@@ -1,0 +1,2 @@
+recursive-include wagtail_publish_calendar/templates *
+recursive-include templates *

@@ -1,44 +1,80 @@
 {% extends "wagtailadmin/base.html" %}
 {% load static wagtailadmin_tags %}
-
+{% block titletag %}{{ page_title }}{% endblock %}
 {% block content %}
-<div id="calendar" data-events-url="{% url 'wagtail_publish_calendar:events_json' %}" data-update-url="{% url 'wagtail_publish_calendar:update_event' %}"></div>
+    {% include "wagtailadmin/shared/header.html" with title=page_title icon="date" %}
+    <div id="calendar"
+         data-events-url="{% url "wagtail_publish_calendar:events_json" %}"
+         data-update-url="{% url "wagtail_publish_calendar:update_event" %}"></div>
+    <dialog id="event-modal"
+            class="w-dialog"
+            aria-labelledby="event-modal-title"
+            style="display: none">
+        <form id="schedule-form">
+            <div class="w-dialog__content">
+                <div class="w-dialog__header">
+                    <h2 id="event-modal-title" class="w-dialog__title">Update Schedule</h2>
+                </div>
+                <div class="w-dialog__body">
+                    <input type="hidden" id="page-id-input" name="page_id">
+                    {% if form %}
+                        {{ form.media }}
+                        <div class="w-field w-field--datetime">
+                            <label class="w-field__label" for="{{ form.go_live_at.id_for_label }}">{{ form.go_live_at.label }}</label>
+                            <div class="w-field__input pt-1"
+                                 style="display: flex;
+                                        gap: 0.5rem;
+                                        align-items: center">
+                                {{ form.go_live_at }}
+                                <button id="unschedule-start"
+                                        type="button"
+                                        class="button button-secondary button-small">Clear</button>
+                            </div>
+                        </div>
+                        <div class="w-field w-field--datetime">
+                            <label class="w-field__label" for="{{ form.expiry_at.id_for_label }}">{{ form.expiry_at.label }}</label>
+                            <div class="w-field__input pt-1"
+                                 style="display: flex;
+                                        gap: 0.5rem;
+                                        align-items: center">
+                                {{ form.expiry_at }}
+                                <button id="unschedule-end"
+                                        type="button"
+                                        class="button button-secondary button-small">Clear</button>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="w-dialog__footer">
+                    <div class="w-dialog__buttons p-4">
+                        <button id="modal-cancel"
+                                type="button"
+                                class="button button-secondary w-dialog__close">Cancel</button>
+                        <button id="modal-save" type="submit" class="button button-primary">Save Schedule</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </dialog>
+    {# Styles to improve event appearance #}
+    <style>
+    /* Allow the event content to wrap and stack vertically */
+    .fc-event-main-frame {
+      display: flex;
+      flex-direction: column;
+    }
 
-<dialog id="event-modal" class="w-dialog" aria-labelledby="event-modal-title" aria-describedby="event-modal-desc">
-  <div class="w-dialog__content">
-    <div class="w-dialog__header">
-      <h2 id="event-modal-title" class="w-dialog__title">Set publishing schedule</h2>
-    </div>
-    <div class="w-dialog__body">
-      {% if form %}
-        {{ form.media }}
-        <div class="w-field w-field--datetime" id="go_live">
-          <label class="w-field__label" for="{{ form.go_live_at.id_for_label }}">{{ form.go_live_at.label }}</label>
-          <div class="w-field__input pt-1">
-            {{ form.go_live_at }}
-          </div>
-        </div>
-        <div class="w-field w-field--datetime" id="expiry">
-          <label class="w-field__label" for="{{ form.expiry_at.id_for_label }}">{{ form.expiry_at.label }}</label>
-          <div class="w-field__input pt-1">
-            {{ form.expiry_at }}
-          </div>
-        </div>
-      {% endif %}
-    </div>
-    <div class="w-dialog__footer">
-      <div class="w-dialog__buttons p-4">
-        <button id="modal-cancel" type="button" class="button button-secondary w-dialog__close" aria-label="Close">Close</button>
-        <button id="modal-save" type="button" class="button button-primary">Schedule to publish</button>
-      </div>
-    </div>
-  </div>
-</dialog>
+    /* ... other styles if you have them ... */
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-
-{# Wagtail's AdminDateTimeInput includes its own assets via form.media #}
-
-<script type="module" src="{% static 'wagtail_publish_calendar/js/calendar.js' %}"></script>
+    .fc-event-time {
+      font-style: italic;
+      font-size: 0.8em;
+      opacity: 0.8;
+    }
+    </style>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css"
+          rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+    <script type="module"
+            src="{% static 'wagtail_publish_calendar/js/calendar.js' %}"></script>
 {% endblock %}
